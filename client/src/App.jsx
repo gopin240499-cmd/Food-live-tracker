@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -20,7 +20,7 @@ const RoleRedirect = () => {
 
 function App() {
   return (
-    <Router>
+    <HashRouter>
       <AuthProvider>
         <SocketProvider>
           <Suspense
@@ -61,7 +61,7 @@ function App() {
           </Suspense>
         </SocketProvider>
       </AuthProvider>
-    </Router>
+    </HashRouter>
   );
 }
 
