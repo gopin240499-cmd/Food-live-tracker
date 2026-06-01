@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api', // adjust this for production
+  baseURL: 'https://food-live-tracker.onrender.com/api', // adjust this for production
 });
 
 // Request interceptor to add the auth token to headers
