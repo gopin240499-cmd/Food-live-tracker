@@ -66,10 +66,12 @@ export const initializeTrackingSocket = (io) => {
       io.to(orderId).emit('delivery_arrived', { message: 'Your delivery partner has arrived!' });
     });
 
-    // Handle order accepted notification
+    // Handle order accepted / status change notification
     socket.on('order_accepted', (data) => {
-      const { orderId, deliveryPartnerId } = data;
-      io.to(orderId).emit('order_status_update', { status: 'accepted', deliveryPartnerId });
+      const { orderId, deliveryPartnerId, status } = data;
+      const emitStatus = status || 'accepted';
+      console.log(`Order ${orderId} status update: ${emitStatus} by ${deliveryPartnerId}`);
+      io.to(orderId).emit('order_status_update', { status: emitStatus, deliveryPartnerId });
     });
 
     socket.on('disconnect', () => {

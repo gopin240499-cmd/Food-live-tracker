@@ -37,6 +37,16 @@ const DeliveryDashboard = () => {
   const simulationIndexRef = useRef(0);
   const routePathRef = useRef([]);
 
+  // *** FIX: Use refs to always have the latest socket and activeOrder inside setInterval ***
+  const socketRef = useRef(socket);
+  const activeOrderRef = useRef(activeOrder);
+  const userRef = useRef(user);
+
+  // Keep refs in sync with state
+  useEffect(() => { socketRef.current = socket; }, [socket]);
+  useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
     libraries,
@@ -56,8 +66,35 @@ const DeliveryDashboard = () => {
   };
 
   useEffect(() => {
-    fetchPendingOrders();
-  }, []);
+    const initDashboard = async () => {
+      setLoadingOrders(true);
+      try {
+        const { data: active } = await api.get('/orders/active');
+        if (active) {
+          setActiveOrder(active);
+          if (socket) {
+            socket.emit(SOCKET_EVENTS.JOIN_ORDER_ROOM, active._id);
+          }
+        } else {
+          fetchPendingOrders();
+        }
+      } catch (err) {
+        showToast('Failed to load active status', 'error');
+        fetchPendingOrders();
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+    initDashboard();
+  }, [socket]);
+
+  // Resume tracking if active order is on the way
+  useEffect(() => {
+    if (activeOrder && activeOrder.status === ORDER_STATUS.ON_THE_WAY && currentPosition && isLoaded && !isTracking) {
+      console.log('[Delivery] Resuming route tracking for active order');
+      initiateRouteTracking(activeOrder, currentPosition);
+    }
+  }, [activeOrder, currentPosition, isLoaded, isTracking, initiateRouteTracking]);
 
   // Get current position
   useEffect(() => {
@@ -109,6 +146,35 @@ const DeliveryDashboard = () => {
     }
   };
 
+  const initiateRouteTracking = useCallback((order, startPos) => {
+    if (!order || !startPos || !isLoaded || !window.google) return;
+
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: startPos,
+        destination: {
+          lat: order.deliveryLocation.lat,
+          lng: order.deliveryLocation.lng,
+        },
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === 'OK') {
+          setDirections(result);
+          // Extract path points for simulation
+          const path = result.routes[0].overview_path.map((p) => ({
+            lat: p.lat(),
+            lng: p.lng(),
+          }));
+          routePathRef.current = path;
+          simulationIndexRef.current = 0;
+          startTracking();
+        }
+      }
+    );
+  }, [isLoaded]);
+
   // Start delivery — begin sending location updates
   const handleStartDelivery = async () => {
     if (!activeOrder || !currentPosition) return;
@@ -118,33 +184,16 @@ const DeliveryDashboard = () => {
       await api.put(`/orders/${activeOrder._id}/status`, { status: ORDER_STATUS.ON_THE_WAY });
       setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.ON_THE_WAY }));
 
-      // Get route for simulation
-      if (isLoaded && window.google) {
-        const directionsService = new window.google.maps.DirectionsService();
-        directionsService.route(
-          {
-            origin: currentPosition,
-            destination: {
-              lat: activeOrder.deliveryLocation.lat,
-              lng: activeOrder.deliveryLocation.lng,
-            },
-            travelMode: window.google.maps.TravelMode.DRIVING,
-          },
-          (result, status) => {
-            if (status === 'OK') {
-              setDirections(result);
-              // Extract path points for simulation
-              const path = result.routes[0].overview_path.map((p) => ({
-                lat: p.lat(),
-                lng: p.lng(),
-              }));
-              routePathRef.current = path;
-              simulationIndexRef.current = 0;
-              startTracking();
-            }
-          }
-        );
+      // *** FIX: Emit status change to customer via socket ***
+      if (socket) {
+        socket.emit(SOCKET_EVENTS.ORDER_ACCEPTED, {
+          orderId: activeOrder._id,
+          deliveryPartnerId: user._id,
+          status: ORDER_STATUS.ON_THE_WAY,
+        });
       }
+
+      initiateRouteTracking(activeOrder, currentPosition);
     } catch (err) {
       showToast('Failed to start delivery', 'error');
     }
@@ -160,7 +209,7 @@ const DeliveryDashboard = () => {
 
       if (index >= path.length) {
         // Reached destination
-        handleDeliveryComplete();
+        stopTrackingAndComplete();
         return;
       }
 
@@ -173,47 +222,67 @@ const DeliveryDashboard = () => {
 
       setCurrentPosition(point);
 
-      // Emit location via socket
-      if (socket && activeOrder) {
-        socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
-          orderId: activeOrder._id,
-          deliveryPartnerId: user._id,
+      // *** FIX: Use refs instead of stale closure variables ***
+      const currentSocket = socketRef.current;
+      const currentOrder = activeOrderRef.current;
+      const currentUser = userRef.current;
+
+      if (currentSocket && currentOrder) {
+        console.log('[Delivery] Emitting location:', point.lat.toFixed(4), point.lng.toFixed(4), 'for order:', currentOrder._id);
+        currentSocket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
+          orderId: currentOrder._id,
+          deliveryPartnerId: currentUser?._id,
           latitude: point.lat,
           longitude: point.lng,
           speed,
           direction: bearing,
         });
+      } else {
+        console.warn('[Delivery] Cannot emit — socket:', !!currentSocket, 'order:', !!currentOrder);
       }
 
       // Calculate remaining distance
-      const dest = activeOrder.deliveryLocation;
-      const dist = calculateDistance(point.lat, point.lng, dest.lat, dest.lng);
-      setDistanceRemaining(dist);
-      setEta(Math.ceil((dist / 20) * 60)); // ~20 km/h average
+      if (currentOrder) {
+        const dest = currentOrder.deliveryLocation;
+        const dist = calculateDistance(point.lat, point.lng, dest.lat, dest.lng);
+        setDistanceRemaining(dist);
+        setEta(Math.ceil((dist / 20) * 60)); // ~20 km/h average
+
+        // Arrival detection (within 50 meters)
+        if (dist < 0.05) {
+          stopTrackingAndComplete();
+          return;
+        }
+      }
 
       // Move to next point
       simulationIndexRef.current = index + 1;
-
-      // Arrival detection (within 50 meters)
-      if (dist < 0.05) {
-        handleDeliveryComplete();
-      }
     }, 3000); // Send location every 3 seconds
   };
 
-  // Mark delivery as complete
-  const handleDeliveryComplete = async () => {
+  // Separate function to stop tracking and complete delivery (avoids stale closure for handleDeliveryComplete)
+  const stopTrackingAndComplete = () => {
     if (trackingIntervalRef.current) {
       clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
     }
     setIsTracking(false);
+    completeDelivery();
+  };
+
+  // Mark delivery as complete
+  const completeDelivery = async () => {
+    const currentOrder = activeOrderRef.current;
+    const currentSocket = socketRef.current;
+
+    if (!currentOrder) return;
 
     try {
-      await api.put(`/orders/${activeOrder._id}/status`, { status: ORDER_STATUS.DELIVERED });
+      await api.put(`/orders/${currentOrder._id}/status`, { status: ORDER_STATUS.DELIVERED });
 
       // Notify customer
-      if (socket) {
-        socket.emit(SOCKET_EVENTS.DELIVERY_REACHED, { orderId: activeOrder._id });
+      if (currentSocket) {
+        currentSocket.emit(SOCKET_EVENTS.DELIVERY_REACHED, { orderId: currentOrder._id });
       }
 
       setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.DELIVERED }));
@@ -230,6 +299,16 @@ const DeliveryDashboard = () => {
     } catch (err) {
       showToast('Failed to complete delivery', 'error');
     }
+  };
+
+  // Manual completion button handler
+  const handleDeliveryComplete = () => {
+    if (trackingIntervalRef.current) {
+      clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
+    }
+    setIsTracking(false);
+    completeDelivery();
   };
 
   // Cleanup

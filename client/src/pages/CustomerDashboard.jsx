@@ -50,10 +50,42 @@ const CustomerDashboard = () => {
 
   // Set customer marker to current position
   useEffect(() => {
-    if (myPosition) {
+    if (myPosition && !order) {
       setCustomerMarkerPosition(myPosition);
     }
-  }, [myPosition]);
+  }, [myPosition, order]);
+
+  // Fetch active order on load
+  useEffect(() => {
+    const fetchActiveOrder = async () => {
+      try {
+        const { data } = await api.get('/orders/active');
+        if (data) {
+          setOrder(data);
+          if (data.deliveryLocation) {
+            setCustomerMarkerPosition({
+              lat: data.deliveryLocation.lat,
+              lng: data.deliveryLocation.lng,
+            });
+          }
+          // Fetch latest tracking position
+          try {
+            const { data: tracking } = await api.get(`/orders/${data._id}/tracking`);
+            if (tracking) {
+              const riderPos = { lat: tracking.latitude, lng: tracking.longitude };
+              setDeliveryMarkerPosition(riderPos);
+              previousPositionRef.current = riderPos;
+            }
+          } catch (err) {
+            console.error('Failed to fetch initial tracking:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load active order:', err);
+      }
+    };
+    fetchActiveOrder();
+  }, []);
 
   // Initialize autocomplete service
   const onMapLoad = useCallback((mapInstance) => {
@@ -77,29 +109,35 @@ const CustomerDashboard = () => {
     if (!socket || !order) return;
 
     // Join order room
+    console.log('[Customer] Joining order room:', order._id);
     socket.emit(SOCKET_EVENTS.JOIN_ORDER_ROOM, order._id);
 
     // Listen for live location
     socket.on(SOCKET_EVENTS.RECEIVE_LOCATION, (data) => {
+      console.log('[Customer] Received location:', data.latitude?.toFixed(4), data.longitude?.toFixed(4));
       const newPos = { lat: data.latitude, lng: data.longitude };
-      animateMarker(deliveryMarkerPosition, newPos);
+      // *** FIX: Use previousPositionRef instead of stale deliveryMarkerPosition ***
+      animateMarker(previousPositionRef.current, newPos);
       setSpeed(data.speed || 0);
     });
 
     // Listen for ETA updates
     socket.on(SOCKET_EVENTS.ETA_UPDATE, (data) => {
+      console.log('[Customer] ETA update:', data.eta, 'Distance:', data.distance);
       setEta(data.eta);
       setDistance(data.distance);
     });
 
     // Listen for order status
     socket.on(SOCKET_EVENTS.ORDER_STATUS_UPDATE, (data) => {
+      console.log('[Customer] Status update:', data.status);
       setOrder((prev) => ({ ...prev, status: data.status }));
-      showToast(`Order ${data.status.replace('_', ' ')}!`, 'info');
+      showToast(`Order ${data.status.replace(/_/g, ' ')}!`, 'info');
     });
 
     // Listen for delivery arrival
     socket.on(SOCKET_EVENTS.DELIVERY_ARRIVED, (data) => {
+      console.log('[Customer] Delivery arrived!');
       showToast(data.message, 'success');
       setOrder((prev) => ({ ...prev, status: ORDER_STATUS.DELIVERED }));
     });

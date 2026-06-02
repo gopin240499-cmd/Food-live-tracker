@@ -1,4 +1,5 @@
 import Order from '../models/Order.js';
+import Tracking from '../models/Tracking.js';
 
 // @desc    Create new order (dummy order)
 // @route   POST /api/orders
@@ -15,6 +16,29 @@ export const createOrder = async (req, res) => {
 
     const createdOrder = await order.save();
     res.status(201).json(createdOrder);
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
+// @desc    Get active order for current user (customer or delivery partner)
+// @route   GET /api/orders/active
+// @access  Private
+export const getActiveOrder = async (req, res) => {
+  try {
+    let query = {};
+    if (req.user.role === 'customer') {
+      query = { customerId: req.user._id, status: { $ne: 'delivered' } };
+    } else if (req.user.role === 'delivery') {
+      query = { deliveryPartnerId: req.user._id, status: { $ne: 'delivered' } };
+    }
+
+    const order = await Order.findOne(query)
+      .populate('customerId', 'name email')
+      .populate('deliveryPartnerId', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json(order || null);
   } catch (error) {
     res.status(500).json({ message: 'Server Error', error: error.message });
   }
@@ -99,5 +123,18 @@ export const getOrderById = async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Get latest tracking position for an order
+// @route   GET /api/orders/:id/tracking
+// @access  Private
+export const getOrderTracking = async (req, res) => {
+  try {
+    const tracking = await Tracking.findOne({ orderId: req.params.id })
+      .sort({ createdAt: -1 });
+    res.json(tracking || null);
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
   }
 };
