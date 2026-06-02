@@ -146,57 +146,45 @@ const DeliveryDashboard = () => {
     }
   };
 
-  const initiateRouteTracking = useCallback((order, startPos) => {
-    if (!order || !startPos || !isLoaded || !window.google) return;
+  // Mark delivery as complete
+  const completeDelivery = async () => {
+    const currentOrder = activeOrderRef.current;
+    const currentSocket = socketRef.current;
 
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      {
-        origin: startPos,
-        destination: {
-          lat: order.deliveryLocation.lat,
-          lng: order.deliveryLocation.lng,
-        },
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === 'OK') {
-          setDirections(result);
-          // Extract path points for simulation
-          const path = result.routes[0].overview_path.map((p) => ({
-            lat: p.lat(),
-            lng: p.lng(),
-          }));
-          routePathRef.current = path;
-          simulationIndexRef.current = 0;
-          startTracking();
-        }
-      }
-    );
-  }, [isLoaded]);
+    if (!currentOrder) return;
 
-  // Start delivery — begin sending location updates
-  const handleStartDelivery = async () => {
-    if (!activeOrder || !currentPosition) return;
-
-    // Update order status to on_the_way
     try {
-      await api.put(`/orders/${activeOrder._id}/status`, { status: ORDER_STATUS.ON_THE_WAY });
-      setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.ON_THE_WAY }));
+      await api.put(`/orders/${currentOrder._id}/status`, { status: ORDER_STATUS.DELIVERED });
 
-      // *** FIX: Emit status change to customer via socket ***
-      if (socket) {
-        socket.emit(SOCKET_EVENTS.ORDER_ACCEPTED, {
-          orderId: activeOrder._id,
-          deliveryPartnerId: user._id,
-          status: ORDER_STATUS.ON_THE_WAY,
-        });
+      // Notify customer
+      if (currentSocket) {
+        currentSocket.emit(SOCKET_EVENTS.DELIVERY_REACHED, { orderId: currentOrder._id });
       }
 
-      initiateRouteTracking(activeOrder, currentPosition);
+      setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.DELIVERED }));
+      showToast('Delivery completed! 🎉', 'success');
+
+      // Reset after a short delay
+      setTimeout(() => {
+        setActiveOrder(null);
+        setDirections(null);
+        setDistanceRemaining(null);
+        setEta(null);
+        fetchPendingOrders();
+      }, 3000);
     } catch (err) {
-      showToast('Failed to start delivery', 'error');
+      showToast('Failed to complete delivery', 'error');
     }
+  };
+
+  // Separate function to stop tracking and complete delivery (avoids stale closure for handleDeliveryComplete)
+  const stopTrackingAndComplete = () => {
+    if (trackingIntervalRef.current) {
+      clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
+    }
+    setIsTracking(false);
+    completeDelivery();
   };
 
   // Simulate location tracking along the route
@@ -260,44 +248,56 @@ const DeliveryDashboard = () => {
     }, 3000); // Send location every 3 seconds
   };
 
-  // Separate function to stop tracking and complete delivery (avoids stale closure for handleDeliveryComplete)
-  const stopTrackingAndComplete = () => {
-    if (trackingIntervalRef.current) {
-      clearInterval(trackingIntervalRef.current);
-      trackingIntervalRef.current = null;
-    }
-    setIsTracking(false);
-    completeDelivery();
-  };
+  const initiateRouteTracking = useCallback((order, startPos) => {
+    if (!order || !startPos || !isLoaded || !window.google) return;
 
-  // Mark delivery as complete
-  const completeDelivery = async () => {
-    const currentOrder = activeOrderRef.current;
-    const currentSocket = socketRef.current;
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: startPos,
+        destination: {
+          lat: order.deliveryLocation.lat,
+          lng: order.deliveryLocation.lng,
+        },
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === 'OK') {
+          setDirections(result);
+          // Extract path points for simulation
+          const path = result.routes[0].overview_path.map((p) => ({
+            lat: p.lat(),
+            lng: p.lng(),
+          }));
+          routePathRef.current = path;
+          simulationIndexRef.current = 0;
+          startTracking();
+        }
+      }
+    );
+  }, [isLoaded]);
 
-    if (!currentOrder) return;
+  // Start delivery — begin sending location updates
+  const handleStartDelivery = async () => {
+    if (!activeOrder || !currentPosition) return;
 
+    // Update order status to on_the_way
     try {
-      await api.put(`/orders/${currentOrder._id}/status`, { status: ORDER_STATUS.DELIVERED });
+      await api.put(`/orders/${activeOrder._id}/status`, { status: ORDER_STATUS.ON_THE_WAY });
+      setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.ON_THE_WAY }));
 
-      // Notify customer
-      if (currentSocket) {
-        currentSocket.emit(SOCKET_EVENTS.DELIVERY_REACHED, { orderId: currentOrder._id });
+      // *** FIX: Emit status change to customer via socket ***
+      if (socket) {
+        socket.emit(SOCKET_EVENTS.ORDER_ACCEPTED, {
+          orderId: activeOrder._id,
+          deliveryPartnerId: user._id,
+          status: ORDER_STATUS.ON_THE_WAY,
+        });
       }
 
-      setActiveOrder((prev) => ({ ...prev, status: ORDER_STATUS.DELIVERED }));
-      showToast('Delivery completed! 🎉', 'success');
-
-      // Reset after a short delay
-      setTimeout(() => {
-        setActiveOrder(null);
-        setDirections(null);
-        setDistanceRemaining(null);
-        setEta(null);
-        fetchPendingOrders();
-      }, 3000);
+      initiateRouteTracking(activeOrder, currentPosition);
     } catch (err) {
-      showToast('Failed to complete delivery', 'error');
+      showToast('Failed to start delivery', 'error');
     }
   };
 
