@@ -245,7 +245,7 @@ const CustomerDashboard = () => {
 
       <div className="flex-1 flex flex-col lg:flex-row">
         {/* Map Section */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-h-[60vh] lg:min-h-0">
           <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={myPosition || defaultCenter}
@@ -373,18 +373,16 @@ const CustomerDashboard = () => {
                     return (
                       <div key={step.key} className="flex items-center gap-3">
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 transition-all ${
-                            isCompleted
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 transition-all ${isCompleted
                               ? 'bg-orange-500 text-white shadow-md shadow-orange-200'
                               : 'bg-gray-100 text-gray-400'
-                          } ${isActive ? 'ring-2 ring-orange-300 ring-offset-2' : ''}`}
+                            } ${isActive ? 'ring-2 ring-orange-300 ring-offset-2' : ''}`}
                         >
                           {step.icon}
                         </div>
                         <span
-                          className={`text-sm ${
-                            isCompleted ? 'text-gray-800 font-medium' : 'text-gray-400'
-                          }`}
+                          className={`text-sm ${isCompleted ? 'text-gray-800 font-medium' : 'text-gray-400'
+                            }`}
                         >
                           {step.label}
                         </span>

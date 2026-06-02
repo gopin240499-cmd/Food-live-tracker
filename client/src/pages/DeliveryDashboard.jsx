@@ -419,7 +419,7 @@ const DeliveryDashboard = () => {
         </div>
 
         {/* Map Section */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative  min-h-[60vh] lg:min-h-0">
           <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={currentPosition || defaultCenter}
