@@ -14,7 +14,7 @@ import { formatDistance, formatETA, calculateDistance, calculateBearing } from '
 import { slideUp } from '../animations/variants';
 
 const libraries = ['places'];
-const mapContainerStyle = { width: '100%', height: '100%' };
+const mapContainerStyle = { width: '100%', height: 'calc(100vh - 72px)' };
 const defaultCenter = { lat: 28.6139, lng: 77.2090 };
 
 const DeliveryDashboard = () => {
@@ -76,6 +76,14 @@ const DeliveryDashboard = () => {
       );
     }
   }, []);
+
+  useEffect(() => {
+    if (map && window.google) {
+      setTimeout(() => {
+        window.google.maps.event.trigger(map, 'resize');
+      }, 300);
+    }
+  }, [map]);
 
   // Accept an order
   const handleAcceptOrder = async (orderId) => {
@@ -419,7 +427,7 @@ const DeliveryDashboard = () => {
         </div>
 
         {/* Map Section */}
-        <div className="flex-1 relative  min-h-[60vh] lg:min-h-0">
+        <div className="flex-1 relative h-[calc(100vh-72px)]">
           <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={currentPosition || defaultCenter}

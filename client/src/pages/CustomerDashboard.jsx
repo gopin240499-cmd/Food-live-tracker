@@ -16,7 +16,7 @@ import { formatDistance, formatETA, formatSpeed, formatTime, calculateDistance }
 import { slideUp, slideInRight } from '../animations/variants';
 
 const libraries = ['places'];
-const mapContainerStyle = { width: '100%', height: '100%' };
+const mapContainerStyle = { width: '100%', height: 'calc(100vh - 72px)' };
 const defaultCenter = { lat: 28.6139, lng: 77.2090 }; // Delhi as default
 
 const CustomerDashboard = () => {
@@ -63,6 +63,14 @@ const CustomerDashboard = () => {
       placesServiceRef.current = new window.google.maps.places.PlacesService(mapInstance);
     }
   }, []);
+
+  useEffect(() => {
+    if (map && window.google) {
+      setTimeout(() => {
+        window.google.maps.event.trigger(map, 'resize');
+      }, 300);
+    }
+  }, [map]);
 
   // Listen for socket events
   useEffect(() => {
@@ -245,7 +253,7 @@ const CustomerDashboard = () => {
 
       <div className="flex-1 flex flex-col lg:flex-row">
         {/* Map Section */}
-        <div className="flex-1 relative min-h-[60vh] lg:min-h-0">
+        <div className="flex-1 relative h-[calc(100vh-72px)]">
           <GoogleMap
             mapContainerStyle={mapContainerStyle}
             center={myPosition || defaultCenter}
@@ -374,8 +382,8 @@ const CustomerDashboard = () => {
                       <div key={step.key} className="flex items-center gap-3">
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 transition-all ${isCompleted
-                              ? 'bg-orange-500 text-white shadow-md shadow-orange-200'
-                              : 'bg-gray-100 text-gray-400'
+                            ? 'bg-orange-500 text-white shadow-md shadow-orange-200'
+                            : 'bg-gray-100 text-gray-400'
                             } ${isActive ? 'ring-2 ring-orange-300 ring-offset-2' : ''}`}
                         >
                           {step.icon}
