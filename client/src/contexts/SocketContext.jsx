@@ -16,7 +16,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (user) {
       // Connect to socket when user is logged in
-      const socketInstance = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000');
+      const socketInstance = io(import.meta.env.VITE_SOCKET_URL || 'https://food-live-tracker.onrender.com');
 
       socketInstance.on('connect', () => {
         setIsConnected(true);
