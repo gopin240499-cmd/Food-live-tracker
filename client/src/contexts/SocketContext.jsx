@@ -16,8 +16,8 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (user) {
       // Connect to socket when user is logged in
-      const socketInstance = io('http://localhost:5000');
-      
+      const socketInstance = io('https://food-live-tracker.onrender.com');
+
       socketInstance.on('connect', () => {
         setIsConnected(true);
         console.log('Connected to socket server');
