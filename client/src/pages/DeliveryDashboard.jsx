@@ -65,62 +65,7 @@ const DeliveryDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    const initDashboard = async () => {
-      setLoadingOrders(true);
-      try {
-        const { data: active } = await api.get('/orders/active');
-        if (active) {
-          setActiveOrder(active);
-          if (socket) {
-            socket.emit(SOCKET_EVENTS.JOIN_ORDER_ROOM, active._id);
-          }
-        } else {
-          fetchPendingOrders();
-        }
-      } catch (err) {
-        showToast('Failed to load active status', 'error');
-        fetchPendingOrders();
-      } finally {
-        setLoadingOrders(false);
-      }
-    };
-    initDashboard();
-  }, [socket]);
 
-  // Resume tracking if active order is on the way
-  useEffect(() => {
-    if (activeOrder && activeOrder.status === ORDER_STATUS.ON_THE_WAY && currentPosition && isLoaded && !isTracking) {
-      console.log('[Delivery] Resuming route tracking for active order');
-      initiateRouteTracking(activeOrder, currentPosition);
-    }
-  }, [activeOrder, currentPosition, isLoaded, isTracking, initiateRouteTracking]);
-
-  // Get current position
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCurrentPosition({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-        },
-        () => {
-          setCurrentPosition(defaultCenter);
-        },
-        { enableHighAccuracy: true }
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (map && window.google) {
-      setTimeout(() => {
-        window.google.maps.event.trigger(map, 'resize');
-      }, 300);
-    }
-  }, [map]);
 
   // Accept an order
   const handleAcceptOrder = async (orderId) => {
@@ -337,6 +282,63 @@ const DeliveryDashboard = () => {
       }
     );
   }, [currentPosition, activeOrder, isLoaded, isTracking]);
+
+  useEffect(() => {
+    const initDashboard = async () => {
+      setLoadingOrders(true);
+      try {
+        const { data: active } = await api.get('/orders/active');
+        if (active) {
+          setActiveOrder(active);
+          if (socket) {
+            socket.emit(SOCKET_EVENTS.JOIN_ORDER_ROOM, active._id);
+          }
+        } else {
+          fetchPendingOrders();
+        }
+      } catch (err) {
+        showToast('Failed to load active status', 'error');
+        fetchPendingOrders();
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+    initDashboard();
+  }, [socket]);
+
+  // Resume tracking if active order is on the way
+  useEffect(() => {
+    if (activeOrder && activeOrder.status === ORDER_STATUS.ON_THE_WAY && currentPosition && isLoaded && !isTracking) {
+      console.log('[Delivery] Resuming route tracking for active order');
+      initiateRouteTracking(activeOrder, currentPosition);
+    }
+  }, [activeOrder, currentPosition, isLoaded, isTracking, initiateRouteTracking]);
+
+  // Get current position
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCurrentPosition({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        () => {
+          setCurrentPosition(defaultCenter);
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (map && window.google) {
+      setTimeout(() => {
+        window.google.maps.event.trigger(map, 'resize');
+      }, 300);
+    }
+  }, [map]);
 
   if (!isLoaded) {
     return (
